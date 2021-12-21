@@ -148,13 +148,135 @@ if opt.active_log:
             wandb.init(project="saint_v2_all", group =opt.run_name ,name = f'{opt.task}_{str(opt.attentiontype)}_{str(opt.dset_id)}_{str(opt.set_seed)}')
    
 
+#### gutting the data preprocessing
+
+import openml
+import numpy as np
+from sklearn.preprocessing import LabelEncoder
+import pandas as pd
+from torch.utils.data import Dataset
+
+ds_id = opt.dset_id
+seed = opt.dset_seed
+task = opt.task
+
+datasplit=[.65, .15, .2]
+
+np.random.seed(seed)
+dataset = openml.datasets.get_dataset(ds_id)
+
+X, y, categorical_indicator, attribute_names = dataset.get_data(dataset_format="dataframe",
+                                                                target=dataset.default_target_attribute)
+
+# x is a pandas dataframe with a bunch of features, mixed continuous and float
+# y is a pandas series with distinct caegories, '1' and '2'
+# categorical indicator is a list of booleans where the value corresponds to the column index
+# attribute names is like above but with names in place of boolean
+
+if ds_id == 42178:
+    categorical_indicator = [True, False, True, True, False, True, True, True, True, True, True, True, True, True, True,
+                             True, True, False, False]
+    tmp = [x if (x != ' ') else '0' for x in X['TotalCharges'].tolist()]
+    X['TotalCharges'] = [float(i) for i in tmp]
+    y = y[X.TotalCharges != 0]
+    X = X[X.TotalCharges != 0]
+    X.reset_index(drop=True, inplace=True)
+    print(y.shape, X.shape)
+if ds_id in [42728, 42705, 42729, 42571]:
+    # import ipdb; ipdb.set_trace()
+    X, y = X[:50000], y[:50000]
+    X.reset_index(drop=True, inplace=True)
+categorical_columns = X.columns[list(np.where(np.array(categorical_indicator) == True)[0])].tolist()
+# this just specifies the categorical column names
+cont_columns = list(set(X.columns.tolist()) - set(categorical_columns))
+# this is the continuous columns, the disjoint of feature names where you remove the categorical columsn or whatever
+
+cat_idxs = list(np.where(np.array(categorical_indicator) == True)[0])
+# indexes of categorical columns.. for some reason
+con_idxs = list(set(range(len(X.columns))) - set(cat_idxs))
+# indexes of continuous columns
+for col in categorical_columns:
+    X[col] = X[col].astype("object")
+# converting all the categoricals to type object
+
+X["Set"] = np.random.choice(["train", "valid", "test"], p=datasplit, size=(X.shape[0],))
+# apply train test val flag
+
+train_indices = X[X.Set == "train"].index
+valid_indices = X[X.Set == "valid"].index
+test_indices = X[X.Set == "test"].index
+# int64 index of the corresponding indices to flag
+
+X = X.drop(columns=['Set'])
+# drop that flag column
+temp = X.fillna("MissingValue")
+# fillna as other...
+nan_mask = temp.ne("MissingValue").astype(int)
+# returns a dataframe of 1s where value is not missing value... so mostly a matrix of 1s.
+
+cat_dims = []
+for col in categorical_columns:
+    #     X[col] = X[col].cat.add_categories("MissingValue")
+    X[col] = X[col].fillna("MissingValue")
+    l_enc = LabelEncoder()
+    X[col] = l_enc.fit_transform(X[col].values)
+    cat_dims.append(len(l_enc.classes_))
+# apply arbitrary integer values to categorical columns...
+# cat dims is the number of distinct categories for each categorical column
+# watch out here, they're not really being mindful of leakage.
+
+for col in cont_columns:
+    #     X[col].fillna("MissingValue",inplace=True)
+    X.fillna(X.loc[train_indices, col].mean(), inplace=True)
+# mean impute the continuous columns... that's bad because i don't see them doing any of that using the training params
+# on the val and test, we'll see
+
+
+y = y.values
+if task != 'regression':
+    l_enc = LabelEncoder()
+    y = l_enc.fit_transform(y)
+# label encoding the y vector to be 0s and 1s..
+
+def data_split(X, y, nan_mask, indices):
+    x_d = {
+        'data': X.values[indices],
+        'mask': nan_mask.values[indices]
+    }
+
+    if x_d['data'].shape != x_d['mask'].shape:
+        raise 'Shape of data not same as that of nan mask!'
+
+    y_d = {
+        'data': y[indices].reshape(-1, 1)
+    }
+    return x_d, y_d
+
+# above function returns x_d which is a dictionary of numpy array of x data values, and then the mask, and then
+# row filtered based on an index
+
+X_train, y_train = data_split(X, y, nan_mask, train_indices)
+X_valid, y_valid = data_split(X, y, nan_mask, valid_indices)
+X_test, y_test = data_split(X, y, nan_mask, test_indices)
+
+train_mean, train_std = np.array(X_train['data'][:, con_idxs], dtype=np.float32).mean(0), np.array(
+    X_train['data'][:, con_idxs], dtype=np.float32).std(0)
+train_std = np.where(train_std < 1e-6, 1e-6, train_std)
+# import ipdb; ipdb.set_trace()
+
+
+####DONE
 
 print('Downloading and processing the dataset, it might take some time.')
-cat_dims, cat_idxs, con_idxs, X_train, y_train, X_valid, y_valid, X_test, y_test, train_mean, train_std = data_prep_openml(opt.dset_id, opt.dset_seed,opt.task, datasplit=[.65, .15, .2])
-continuous_mean_std = np.array([train_mean,train_std]).astype(np.float32) 
+#cat_dims, cat_idxs, con_idxs, X_train, y_train, X_valid, y_valid, X_test, y_test, train_mean, train_std = data_prep_openml(opt.dset_id, opt.dset_seed,opt.task, datasplit=[.65, .15, .2])
+# I scrubbed the above line because I gutted it in the above section
+
+continuous_mean_std = np.array([train_mean,train_std]).astype(np.float32)
 
 ##### Setting some hyperparams based on inputs and dataset
 _,nfeat = X_train['data'].shape
+# this just gets the number of features in the x matrix
+
 if nfeat > 100:
     opt.embedding_size = min(8,opt.embedding_size)
     opt.batchsize = min(64, opt.batchsize)
@@ -170,8 +292,89 @@ print(opt)
 
 if opt.active_log:
     wandb.config.update(opt)
+
+##### gutting the datasetcatcon class
+
+
+# # class DataSetCatCon(Dataset):
+# #     def __init__(self, X, Y, cat_cols, task='clf', continuous_mean_std=None):
+#
+# _X = X_train
+# # that data dict thing
+# _Y = y_train
+# # the y dict
+# _cat_cols = cat_idxs
+# # indices of categorical columns
+# _task = opt.dtask
+# # 'clf' in our case
+# _continuous_mean_std = continuous_mean_std
+#
+# _cat_cols = list(_cat_cols)
+# # redundant
+# _X_mask = _X['mask'].copy()
+# # getting the mask of that data dict
+# _X = _X['data'].copy()
+# # getting the X element of that data dict
+# _con_cols = list(set(np.arange(_X.shape[1])) - set(_cat_cols))
+# # the continuous column indices
+# _X1 = _X[:, _cat_cols].copy().astype(np.int64)  # categorical columns
+# # broken off categorical columns
+# _X2 = _X[:, _con_cols].copy().astype(np.float32)  # numerical columns
+# # broken off numerical columns
+#
+# _X1_mask = _X_mask[:, _cat_cols].copy().astype(np.int64)  # categorical columns
+# # broken off categorical missing value mask
+#
+# _X2_mask = _X_mask[:, _con_cols].copy().astype(np.int64)  # numerical columns
+# # broken off numerical missing value mask
+#
+# if task == 'clf':
+#     _y = _Y['data']  # .astype(np.float32)
+# else:
+#     _y = _Y['data'].astype(np.float32)
+# # just grabbing that y vector
+#
+# _cls = np.zeros_like(_y, dtype=int)
+# # get a bunch of zeros in the same dimensionality as y vector
+#
+# _cls_mask = np.ones_like(_y, dtype=int)
+# # get a bunch of ones in same dimensionality as y vector
+#
+#
+# if continuous_mean_std is not None:
+#     _mean, _std = continuous_mean_std
+#     _X2 = (_X2 - _mean) / _std
+
+# z normalize only the continuous x columns
+
+    #
+    # # def __len__(self):
+    #     return len(self.y)
+    #
+    # # def __getitem__(self, idx):
+    #     # X1 has categorical data, X2 has continuous
+    #     return np.concatenate((self.cls[idx], self.X1[idx])), self.X2[idx], self.y[idx], np.concatenate(
+    #         (self.cls_mask[idx], self.X1_mask[idx])), self.X2_mask[idx]
+
+# note that they are not converting it to a torch tensor.. they must do it at some point...
+
+
 train_ds = DataSetCatCon(X_train, y_train, cat_idxs,opt.dtask,continuous_mean_std)
 trainloader = DataLoader(train_ds, batch_size=opt.batchsize, shuffle=True,num_workers=4)
+
+# a single element looks like this:
+
+# (array([0, 4, 1, 2, 0, 1, 0, 2, 8, 3]),
+# this one is like the categorical vector, with a leading zero appended to it. Andrew suggests it might be the token they mention in the paper
+#  array([ 1.5994084 ,  0.25852484, -1.2972844 ,  0.01338016, -0.5672942 ,
+#         -0.41616383, -0.2361183 ], dtype=float32),
+# this one is the continuous element of the vector
+#  array([0]),
+#  this is the y-element of a vector
+#  array([1, 1, 1, 1, 1, 1, 1, 1, 1, 1]),
+#  │broken off categorical missing value mask with a leading 1 appended to it. that's because that 0 element is not missing
+#  array([1, 1, 1, 1, 1, 1, 1]))
+# broken off numerical missing value mask
 
 valid_ds = DataSetCatCon(X_valid, y_valid, cat_idxs,opt.dtask, continuous_mean_std)
 validloader = DataLoader(valid_ds, batch_size=opt.batchsize, shuffle=False,num_workers=4)
@@ -186,21 +389,22 @@ else:
 cat_dims = np.append(np.array([1]),np.array(cat_dims)).astype(int) #Appending 1 for CLS token, this is later used to generate embeddings.
 
 
+# note in this implementation, we are passing a bunch of hyperparams directly to the model class
 
 model = SAINT(
-categories = tuple(cat_dims), 
-num_continuous = len(con_idxs),                
-dim = opt.embedding_size,                           
-dim_out = 1,                       
-depth = opt.transformer_depth,                       
-heads = opt.attention_heads,                         
-attn_dropout = opt.attention_dropout,             
-ff_dropout = opt.ff_dropout,                  
-mlp_hidden_mults = (4, 2),       
-cont_embeddings = opt.cont_embeddings,
-attentiontype = opt.attentiontype,
-final_mlp_style = opt.final_mlp_style,
-y_dim = y_dim
+categories = tuple(cat_dims), # remember there's a leading 1 here.. array([ 1, 12,  3,  4,  2,  2,  2,  3, 12,  4])
+num_continuous = len(con_idxs), # continuous indices: [0, 5, 9, 11, 12, 13, 14]
+dim = opt.embedding_size, # via config: 32
+dim_out = 1, # I think just a single output?
+depth = opt.transformer_depth,  # in our case, overridden to 1
+heads = opt.attention_heads,   # in our case, 4
+attn_dropout = opt.attention_dropout,  # in our case, overridden to 0.8
+ff_dropout = opt.ff_dropout,  # in our case, overridden to 0.8
+mlp_hidden_mults = (4, 2),  #  I think these are feedforward hidden layers
+cont_embeddings = opt.cont_embeddings, # i forget what this does
+attentiontype = opt.attentiontype, # colrow aka vanilla SAINT
+final_mlp_style = opt.final_mlp_style, # it's 'sep' but honestly i don't know what this does
+y_dim = y_dim #dimensinoality of objective, in this case 2
 )
 vision_dset = opt.vision_dset
 
