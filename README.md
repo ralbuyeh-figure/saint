@@ -5,7 +5,12 @@ This repository is the official PyTorch implementation of SAINT. Find the paper 
 
 ![Overview](pipeline.png)
 
+## Rod notes
 
+use dataset id 1461 for the bank data
+
+Here's a reasonable default:
+`python train.py --dset_id 1461 --task binary --attentiontype colrow`
 
 ## Requirements
 
