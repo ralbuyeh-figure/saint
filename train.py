@@ -12,53 +12,118 @@ from augmentations import add_noise
 
 import os
 import numpy as np
-parser = argparse.ArgumentParser()
 
-parser.add_argument('--dset_id', required=True, type=int)
-parser.add_argument('--vision_dset', action = 'store_true')
-parser.add_argument('--task', required=True, type=str,choices = ['binary','multiclass','regression'])
-parser.add_argument('--cont_embeddings', default='MLP', type=str,choices = ['MLP','Noemb','pos_singleMLP'])
-parser.add_argument('--embedding_size', default=32, type=int)
-parser.add_argument('--transformer_depth', default=6, type=int)
-parser.add_argument('--attention_heads', default=8, type=int)
-parser.add_argument('--attention_dropout', default=0.1, type=float)
-parser.add_argument('--ff_dropout', default=0.1, type=float)
-parser.add_argument('--attentiontype', default='colrow', type=str,choices = ['col','colrow','row','justmlp','attn','attnmlp'])
+class FakeParser:
+    pass
+  
+# Driver's code
+opt = FakeParser()
 
-parser.add_argument('--optimizer', default='AdamW', type=str,choices = ['AdamW','Adam','SGD'])
-parser.add_argument('--scheduler', default='cosine', type=str,choices = ['cosine','linear'])
+opt.dset_id = 1461
+opt.task = "binary"
+opt.attentiontype = "colrow"
+opt.cont_embeddings = "MLP"
+opt.vision_dset = True
+opt.embedding_size = 32
+opt.transformer_depth = 6
+opt.attention_heads = 8
+opt.attention_dropout = 0.1
+opt.ff_dropout = 0.1
+opt.attentiontype = "colrow"
+opt.optimizer = "AdamW"
+#parser = argparse.ArgumentParser()
 
-parser.add_argument('--lr', default=0.0001, type=float)
-parser.add_argument('--epochs', default=100, type=int)
-parser.add_argument('--batchsize', default=256, type=int)
-parser.add_argument('--savemodelroot', default='./bestmodels', type=str)
-parser.add_argument('--run_name', default='testrun', type=str)
-parser.add_argument('--set_seed', default= 1 , type=int)
-parser.add_argument('--dset_seed', default= 5 , type=int)
-parser.add_argument('--active_log', action = 'store_true')
+#parser.add_argument('--dset_id', required=True, type=int)
+#parser.add_argument('--vision_dset', action = 'store_true')
+#parser.add_argument('--task', required=True, type=str,choices = ['binary','multiclass','regression'])
+#parser.add_argument('--cont_embeddings', default='MLP', type=str,choices = ['MLP','Noemb','pos_singleMLP'])
+#parser.add_argument('--embedding_size', default=32, type=int)
+#parser.add_argument('--transformer_depth', default=6, type=int)
+#parser.add_argument('--attention_heads', default=8, type=int)
+#parser.add_argument('--attention_dropout', default=0.1, type=float)
+#parser.add_argument('--ff_dropout', default=0.1, type=float)
+#parser.add_argument('--attentiontype', default='colrow', type=str,choices = ['col','colrow','row','justmlp','attn','attnmlp'])
 
-parser.add_argument('--pretrain', action = 'store_true')
-parser.add_argument('--pretrain_epochs', default=50, type=int)
-parser.add_argument('--pt_tasks', default=['contrastive','denoising'], type=str,nargs='*',choices = ['contrastive','contrastive_sim','denoising'])
-parser.add_argument('--pt_aug', default=[], type=str,nargs='*',choices = ['mixup','cutmix'])
-parser.add_argument('--pt_aug_lam', default=0.1, type=float)
-parser.add_argument('--mixup_lam', default=0.3, type=float)
+#parser.add_argument('--optimizer', default='AdamW', type=str,choices = ['AdamW','Adam','SGD'])
+opt.scheduler = "cosine"
+#parser.add_argument('--scheduler', default='cosine', type=str,choices = ['cosine','linear'])
 
-parser.add_argument('--train_mask_prob', default=0, type=float)
-parser.add_argument('--mask_prob', default=0, type=float)
+opt.lr = 0.0001
+#parser.add_argument('--lr', default=0.0001, type=float)
 
-parser.add_argument('--ssl_avail_y', default= 0, type=int)
-parser.add_argument('--pt_projhead_style', default='diff', type=str,choices = ['diff','same','nohead'])
-parser.add_argument('--nce_temp', default=0.7, type=float)
+opt.epochs = 100
+#parser.add_argument('--epochs', default=100, type=int)
 
-parser.add_argument('--lam0', default=0.5, type=float)
-parser.add_argument('--lam1', default=10, type=float)
-parser.add_argument('--lam2', default=1, type=float)
-parser.add_argument('--lam3', default=10, type=float)
-parser.add_argument('--final_mlp_style', default='sep', type=str,choices = ['common','sep'])
+opt.batchsize = 256
+#parser.add_argument('--batchsize', default=256, type=int)
+
+opt.savemodelroot = "./bestmodels"
+#parser.add_argument('--savemodelroot', default='./bestmodels', type=str)
+
+opt.run_name = "testrun"
+#parser.add_argument('--run_name', default='testrun', type=str)
+
+opt.set_seed = 1
+#parser.add_argument('--set_seed', default= 1 , type=int)
+
+opt.dset_seed = 5
+#parser.add_argument('--dset_seed', default= 5 , type=int)
+
+opt.active_log = True
+#parser.add_argument('--active_log', action = 'store_true')
+
+opt.pretrain = True
+#parser.add_argument('--pretrain', action = 'store_true')
+
+opt.pretrain_epochs = 50
+#parser.add_argument('--pretrain_epochs', default=50, type=int)
+
+opt.pt_tasks = ["contrastive", "denoising"]
+
+#parser.add_argument('--pt_tasks', default=['contrastive','denoising'], type=str,nargs='*',choices = ['contrastive','contrastive_sim','denoising'])
+
+opt.pt_aug = []
+
+#parser.add_argument('--pt_aug', default=[], type=str,nargs='*',choices = ['mixup','cutmix'])
+
+opt.pt_aug_lam = 0.1
+#parser.add_argument('--pt_aug_lam', default=0.1, type=float)
+
+opt.mixup_lam = 0.3
+#parser.add_argument('--mixup_lam', default=0.3, type=float)
+
+opt.train_mask_prob = 0
+#parser.add_argument('--train_mask_prob', default=0, type=float)
+
+opt.mask_prob = 0
+#parser.add_argument('--mask_prob', default=0, type=float)
+
+opt.ssl_avail_y = 0
+#parser.add_argument('--ssl_avail_y', default= 0, type=int)
+
+opt.pt_projhead_style = "diff"
+
+#parser.add_argument('--pt_projhead_style', default='diff', type=str,choices = ['diff','same','nohead'])
+
+opt.nce_temp = 0.7
+
+#parser.add_argument('--nce_temp', default=0.7, type=float)
+
+opt.lam0 = 0.5
+opt.lam1 = 10
+opt.lam2 = 1
+opt.lam3 = 10
+
+opt.final_mlp_style = "sep"
+
+#parser.add_argument('--lam0', default=0.5, type=float)
+#parser.add_argument('--lam1', default=10, type=float)
+#parser.add_argument('--lam2', default=1, type=float)
+#parser.add_argument('--lam3', default=10, type=float)
+#parser.add_argument('--final_mlp_style', default='sep', type=str,choices = ['common','sep'])
 
 
-opt = parser.parse_args()
+#opt = parser.parse_args()
 modelsave_path = os.path.join(os.getcwd(),opt.savemodelroot,opt.task,str(opt.dset_id),opt.run_name)
 if opt.task == 'regression':
     opt.dtask = 'reg'
